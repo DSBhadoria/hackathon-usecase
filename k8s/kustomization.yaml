@@ -1,0 +1,22 @@
+# Kustomization for healthcare application
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: healthcare-app
+
+resources:
+  - deployment.yaml
+  - hpa.yaml
+
+commonLabels:
+  project: healthcare-app
+  managed-by: kustomize
+
+# Image tags can be updated here
+images:
+  - name: myacrname.azurecr.io/patient-service
+    newTag: latest
+  - name: myacrname.azurecr.io/application-service
+    newTag: latest
+  - name: myacrname.azurecr.io/order-service
+    newTag: latest

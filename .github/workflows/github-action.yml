@@ -1,37 +1,103 @@
-name: Docker Image Build and Push to ACR
+name: CI/CD - Build and Push Microservices to ACR
 
 on:
   push:
     branches:
-      - main # Trigger on pushes to the main branch
+      - main
+  pull_request:
+    branches:
+      - main
 
 env:
-  AZURE_CONTAINER_REGISTRY: myacrname.azurecr.io # Replace with your ACR name
-  IMAGE_NAME: my-app # Replace with your desired image name
+  AZURE_CONTAINER_REGISTRY: myacrname.azurecr.io # Replace with your ACR name (e.g., myhealthcareacr.azurecr.io)
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service:
+          - name: patient-service
+            context: ./patient-service
+            port: 3000
+          - name: application-service
+            context: ./application-service
+            port: 3001
+          - name: order-service
+            context: ./order-service
+            port: 8080
+    
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
 
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
     - name: Azure Login
       uses: azure/login@v1
       with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }} # Store Azure service principal credentials as a GitHub secret
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
 
     - name: Log in to Azure Container Registry
       uses: azure/docker-login@v1
       with:
         login-server: ${{ env.AZURE_CONTAINER_REGISTRY }}
-        username: ${{ secrets.ACR_USERNAME }} # Store ACR username as a GitHub secret
-        password: ${{ secrets.ACR_PASSWORD }} # Store ACR password as a GitHub secret
+        username: ${{ secrets.ACR_USERNAME }}
+        password: ${{ secrets.ACR_PASSWORD }}
 
-    - name: Build and push Docker image
+    - name: Extract metadata for Docker
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.AZURE_CONTAINER_REGISTRY }}/${{ matrix.service.name }}
+        tags: |
+          type=sha,prefix=,format=short
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push Docker image - ${{ matrix.service.name }}
       uses: docker/build-push-action@v5
       with:
-        context: .
-        push: true
-        tags: ${{ env.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-        file: ./Dockerfile # Specify the path to your Dockerfile if not in the root
+        context: ${{ matrix.service.context }}
+        file: ${{ matrix.service.context }}/Dockerfile
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=registry,ref=${{ env.AZURE_CONTAINER_REGISTRY }}/${{ matrix.service.name }}:buildcache
+        cache-to: type=registry,ref=${{ env.AZURE_CONTAINER_REGISTRY }}/${{ matrix.service.name }}:buildcache,mode=max
+        build-args: |
+          BUILD_DATE=${{ github.event.head_commit.timestamp }}
+          VCS_REF=${{ github.sha }}
+          VERSION=${{ github.ref_name }}
+
+    - name: Scan image for vulnerabilities - ${{ matrix.service.name }}
+      if: github.event_name != 'pull_request'
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.AZURE_CONTAINER_REGISTRY }}/${{ matrix.service.name }}:${{ github.sha }}
+        format: 'sarif'
+        output: 'trivy-results-${{ matrix.service.name }}.sarif'
+      continue-on-error: true
+
+    - name: Upload Trivy scan results to GitHub Security
+      if: github.event_name != 'pull_request'
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: 'trivy-results-${{ matrix.service.name }}.sarif'
+      continue-on-error: true
+
+  summary:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+    - name: Build Summary
+      run: |
+        echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "All microservices have been built and pushed to ACR" >> $GITHUB_STEP_SUMMARY
+        echo "- patient-service" >> $GITHUB_STEP_SUMMARY
+        echo "- application-service" >> $GITHUB_STEP_SUMMARY
+        echo "- order-service" >> $GITHUB_STEP_SUMMARY

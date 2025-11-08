@@ -1,9 +1,6 @@
-FROM node:18
-
-COPY . .
-WORKDIR /application-service/src
-
-RUN npm init -y
-RUN npm install
-
-CMD ["node", "index.js"]
+# This root Dockerfile is deprecated. 
+# Please use individual Dockerfiles in each service directory:
+# - application-service/Dockerfile
+# - patient-service/Dockerfile
+# - order-service/Dockerfile
+# Or use docker-compose.yml to build all services
