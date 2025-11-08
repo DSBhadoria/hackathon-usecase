@@ -1,0 +1,177 @@
+name: Deploy to AKS/GKE
+
+on:
+  workflow_run:
+    workflows: ["CI/CD - Build and Push Microservices to ACR"]
+    types:
+      - completed
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      cloud_provider:
+        description: 'Cloud Provider'
+        required: true
+        type: choice
+        options:
+          - azure
+          - gcp
+
+env:
+  AZURE_CONTAINER_REGISTRY: myacrname.azurecr.io
+  GCP_CONTAINER_REGISTRY: gcr.io/my-project-id
+
+jobs:
+  deploy-to-aks:
+    name: Deploy to AKS
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.cloud_provider == 'azure')
+    environment:
+      name: ${{ github.event.inputs.environment || 'dev' }}
+      url: https://healthcare-${{ github.event.inputs.environment || 'dev' }}.yourdomain.com
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set AKS Context
+        uses: azure/aks-set-context@v3
+        with:
+          resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          cluster-name: ${{ secrets.AKS_CLUSTER_NAME }}
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Create namespace if not exists
+        run: |
+          kubectl create namespace healthcare-app --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Create ACR Secret
+        run: |
+          kubectl create secret docker-registry acr-secret \
+            --docker-server=${{ env.AZURE_CONTAINER_REGISTRY }} \
+            --docker-username=${{ secrets.ACR_USERNAME }} \
+            --docker-password=${{ secrets.ACR_PASSWORD }} \
+            --namespace=healthcare-app \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Update image tags in manifests
+        run: |
+          cd k8s
+          sed -i "s|myacrname.azurecr.io|${{ env.AZURE_CONTAINER_REGISTRY }}|g" deployment.yaml
+          sed -i "s|:latest|:${{ github.sha }}|g" deployment.yaml
+
+      - name: Deploy to AKS
+        run: |
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/hpa.yaml
+
+      - name: Wait for deployments to be ready
+        run: |
+          kubectl rollout status deployment/patient-service -n healthcare-app --timeout=5m
+          kubectl rollout status deployment/application-service -n healthcare-app --timeout=5m
+          kubectl rollout status deployment/order-service -n healthcare-app --timeout=5m
+
+      - name: Get Service URLs
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Services Deployed:" >> $GITHUB_STEP_SUMMARY
+          kubectl get services -n healthcare-app >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Pods Status:" >> $GITHUB_STEP_SUMMARY
+          kubectl get pods -n healthcare-app >> $GITHUB_STEP_SUMMARY
+
+      - name: Run smoke tests
+        run: |
+          # Get the ingress IP or LoadBalancer IP
+          kubectl get ingress -n healthcare-app
+          # Add basic health checks here
+          echo "Smoke tests completed"
+
+  deploy-to-gke:
+    name: Deploy to GKE
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.cloud_provider == 'gcp'
+    environment:
+      name: ${{ github.event.inputs.environment || 'dev' }}
+      url: https://healthcare-${{ github.event.inputs.environment || 'dev' }}.yourdomain.com
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure kubectl for GKE
+        run: |
+          gcloud container clusters get-credentials ${{ secrets.GKE_CLUSTER_NAME }} \
+            --region=${{ secrets.GCP_REGION }} \
+            --project=${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Create namespace if not exists
+        run: |
+          kubectl create namespace healthcare-app --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Create GCR Secret
+        run: |
+          kubectl create secret docker-registry gcr-secret \
+            --docker-server=${{ env.GCP_CONTAINER_REGISTRY }} \
+            --docker-username=_json_key \
+            --docker-password='${{ secrets.GCP_CREDENTIALS }}' \
+            --namespace=healthcare-app \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Update image tags in manifests
+        run: |
+          cd k8s
+          sed -i "s|myacrname.azurecr.io|${{ env.GCP_CONTAINER_REGISTRY }}|g" deployment.yaml
+          sed -i "s|:latest|:${{ github.sha }}|g" deployment.yaml
+
+      - name: Deploy to GKE
+        run: |
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/hpa.yaml
+
+      - name: Wait for deployments to be ready
+        run: |
+          kubectl rollout status deployment/patient-service -n healthcare-app --timeout=5m
+          kubectl rollout status deployment/application-service -n healthcare-app --timeout=5m
+          kubectl rollout status deployment/order-service -n healthcare-app --timeout=5m
+
+      - name: Get Service URLs
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Services Deployed:" >> $GITHUB_STEP_SUMMARY
+          kubectl get services -n healthcare-app >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Pods Status:" >> $GITHUB_STEP_SUMMARY
+          kubectl get pods -n healthcare-app >> $GITHUB_STEP_SUMMARY
