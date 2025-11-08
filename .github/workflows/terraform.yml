@@ -1,18 +1,24 @@
 name: Terraform - Plan and Apply
 
+# Disabled: Requires AZURE_CREDENTIALS secret with Service Principal permissions
+# To enable: Add AZURE_CREDENTIALS secret and uncomment the 'on' section below
+
 on:
-  pull_request:
-    branches:
-      - main
-    paths:
-      - 'terraform/**'
-      - '.github/workflows/terraform.yml'
-  push:
-    branches:
-      - main
-    paths:
-      - 'terraform/**'
-      - '.github/workflows/terraform.yml'
+  workflow_dispatch:  # Manual trigger only
+  
+# Automatic triggers disabled until Service Principal is configured
+# pull_request:
+#   branches:
+#     - main
+#   paths:
+#     - 'terraform/**'
+#     - '.github/workflows/terraform.yml'
+# push:
+#   branches:
+#     - main
+#   paths:
+#     - 'terraform/**'
+#     - '.github/workflows/terraform.yml'
 
 env:
   TF_VERSION: '1.6.0'
@@ -109,10 +115,11 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Azure Login
-        if: steps.check_terraform.outputs.exists == 'true' && secrets.AZURE_CREDENTIALS != ''
+        if: steps.check_terraform.outputs.exists == 'true'
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
+        continue-on-error: true
 
       - name: Terraform Init - ${{ matrix.environment }}
         if: steps.check_terraform.outputs.exists == 'true'
@@ -169,10 +176,11 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Azure Login
-        if: steps.check_terraform.outputs.exists == 'true' && secrets.AZURE_CREDENTIALS != ''
+        if: steps.check_terraform.outputs.exists == 'true'
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
+        continue-on-error: true
 
       - name: Terraform Init - ${{ matrix.environment }}
         if: steps.check_terraform.outputs.exists == 'true'
