@@ -20,7 +20,7 @@ on:
         default: 'azure'
 
 env:
-  AZURE_CONTAINER_REGISTRY: myacrname.azurecr.io # Replace with your ACR name (e.g., myhealthcareacr.azurecr.io)
+  AZURE_CONTAINER_REGISTRY: dharamhcl.azurecr.io # Replace with your ACR name (e.g., myhealthcareacr.azurecr.io)
   GCP_CONTAINER_REGISTRY: gcr.io/my-project-id # Replace with your GCP project ID
 
 jobs:
