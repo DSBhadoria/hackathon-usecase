@@ -26,23 +26,38 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Check if Terraform directory exists
+        id: check_terraform
+        run: |
+          if [ -d "${{ env.WORKING_DIR }}" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Terraform directory not found. Skipping Terraform workflow."
+            echo "Create a terraform/ directory with your infrastructure code to enable this workflow."
+          fi
+
       - name: Setup Terraform
+        if: steps.check_terraform.outputs.exists == 'true'
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Terraform Format Check
+        if: steps.check_terraform.outputs.exists == 'true'
         id: fmt
         run: terraform fmt -check -recursive
         working-directory: ${{ env.WORKING_DIR }}
         continue-on-error: true
 
       - name: Terraform Init
+        if: steps.check_terraform.outputs.exists == 'true'
         id: init
         run: terraform init -backend=false
         working-directory: ${{ env.WORKING_DIR }}
 
       - name: Terraform Validate
+        if: steps.check_terraform.outputs.exists == 'true'
         id: validate
         run: terraform validate -no-color
         working-directory: ${{ env.WORKING_DIR }}
@@ -77,17 +92,30 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Check if Terraform directory exists
+        id: check_terraform
+        run: |
+          if [ -d "${{ env.WORKING_DIR }}" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
       - name: Setup Terraform
+        if: steps.check_terraform.outputs.exists == 'true'
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Azure Login
+        if: steps.check_terraform.outputs.exists == 'true' && secrets.AZURE_CREDENTIALS != ''
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Terraform Init - ${{ matrix.environment }}
+        if: steps.check_terraform.outputs.exists == 'true'
         run: |
           terraform init \
             -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
@@ -96,6 +124,7 @@ jobs:
         working-directory: ${{ env.WORKING_DIR }}
 
       - name: Terraform Plan - ${{ matrix.environment }}
+        if: steps.check_terraform.outputs.exists == 'true'
         run: |
           terraform plan \
             -var-file="environments/${{ matrix.environment }}.tfvars" \
@@ -104,6 +133,7 @@ jobs:
         working-directory: ${{ env.WORKING_DIR }}
 
       - name: Upload Plan Artifact
+        if: steps.check_terraform.outputs.exists == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: tfplan-${{ matrix.environment }}
@@ -121,17 +151,31 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Check if Terraform directory exists
+        id: check_terraform
+        run: |
+          if [ -d "${{ env.WORKING_DIR }}" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Terraform directory not found. Skipping apply."
+            exit 0
+          fi
+
       - name: Setup Terraform
+        if: steps.check_terraform.outputs.exists == 'true'
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Azure Login
+        if: steps.check_terraform.outputs.exists == 'true' && secrets.AZURE_CREDENTIALS != ''
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Terraform Init - ${{ matrix.environment }}
+        if: steps.check_terraform.outputs.exists == 'true'
         run: |
           terraform init \
             -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
@@ -140,6 +184,7 @@ jobs:
         working-directory: ${{ env.WORKING_DIR }}
 
       - name: Terraform Apply - ${{ matrix.environment }}
+        if: steps.check_terraform.outputs.exists == 'true'
         run: |
           terraform apply \
             -var-file="environments/${{ matrix.environment }}.tfvars" \
@@ -148,5 +193,6 @@ jobs:
         working-directory: ${{ env.WORKING_DIR }}
 
       - name: Output AKS Cluster Info
+        if: steps.check_terraform.outputs.exists == 'true'
         run: terraform output -json
         working-directory: ${{ env.WORKING_DIR }}

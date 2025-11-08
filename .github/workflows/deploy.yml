@@ -1,12 +1,13 @@
 name: Deploy to AKS/GKE
 
 on:
-  workflow_run:
-    workflows: ["CI/CD - Build and Push Microservices"]
-    types:
-      - completed
-    branches:
-      - main
+  # Temporarily disabled auto-trigger until infrastructure is ready
+  # workflow_run:
+  #   workflows: ["CI/CD - Build and Push Microservices"]
+  #   types:
+  #     - completed
+  #   branches:
+  #     - main
   workflow_dispatch:
     inputs:
       environment:
