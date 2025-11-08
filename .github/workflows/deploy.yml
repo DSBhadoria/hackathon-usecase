@@ -2,7 +2,7 @@ name: Deploy to AKS/GKE
 
 on:
   workflow_run:
-    workflows: ["CI/CD - Build and Push Microservices to ACR"]
+    workflows: ["CI/CD - Build and Push Microservices"]
     types:
       - completed
     branches:
@@ -26,7 +26,7 @@ on:
           - gcp
 
 env:
-  AZURE_CONTAINER_REGISTRY: myacrname.azurecr.io
+  AZURE_CONTAINER_REGISTRY: dharamhcl.azurecr.io
   GCP_CONTAINER_REGISTRY: gcr.io/my-project-id
 
 jobs:
