@@ -3,15 +3,18 @@ version: "3.9"
 services:
   application-service:
     build: ./application-service
+    image: ${AZURE_CONTAINER_REGISTRY}/application-service:latest
     ports:
       - "3001:3001"
 
   order-service:
     build: ./order-service
+    image: ${AZURE_CONTAINER_REGISTRY}/order-service:latest
     ports:
       - "8080:8080"
 
   patient-service:
     build: ./patient-service
+    image: ${AZURE_CONTAINER_REGISTRY}/patient-service:latest
     ports:
       - "3000:3000"
