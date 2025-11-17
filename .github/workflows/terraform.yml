@@ -1,206 +1,66 @@
-name: Terraform - Plan and Apply
-
-# Disabled: Requires AZURE_CREDENTIALS secret with Service Principal permissions
-# To enable: Add AZURE_CREDENTIALS secret and uncomment the 'on' section below
+name: 'Terraform Provisioning'
 
 on:
-  workflow_dispatch:  # Manual trigger only
-  
-# Automatic triggers disabled until Service Principal is configured
-# pull_request:
-#   branches:
-#     - main
-#   paths:
-#     - 'terraform/**'
-#     - '.github/workflows/terraform.yml'
-# push:
-#   branches:
-#     - main
-#   paths:
-#     - 'terraform/**'
-#     - '.github/workflows/terraform.yml'
+  workflow_dispatch:
 
-env:
-  TF_VERSION: '1.6.0'
-  WORKING_DIR: './terraform'
+permissions:
+  contents: read
 
 jobs:
-  terraform-lint:
-    name: Terraform Lint and Validate
+  terraform:
+    name: 'Terraform'
     runs-on: ubuntu-latest
+    environment: production
+
+    # Use the Bash shell regardless whether the GitHub Actions runner is ubuntu-latest, macos-latest, or windows-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: terraform
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    # Checkout the repository to the GitHub Actions runner
+    - name: Checkout
+      uses: actions/checkout@v4
 
-      - name: Check if Terraform directory exists
-        id: check_terraform
-        run: |
-          if [ -d "${{ env.WORKING_DIR }}" ]; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-            echo "⚠️ Terraform directory not found. Skipping Terraform workflow."
-            echo "Create a terraform/ directory with your infrastructure code to enable this workflow."
-          fi
+    # Log in to Azure using Service Principal credentials
+    - name: Azure Login
+      uses: azure/login@v2
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Setup Terraform
-        if: steps.check_terraform.outputs.exists == 'true'
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
+    # 🌟 ADD THIS BLOCK
+    - name: Verify Azure Login
+      uses: azure/cli@v2
+      with:
+        inlineScript: |
+          echo "Checking logged-in Azure account..."
+          az account show
 
-      - name: Terraform Format Check
-        if: steps.check_terraform.outputs.exists == 'true'
-        id: fmt
-        run: terraform fmt -check -recursive
-        working-directory: ${{ env.WORKING_DIR }}
-        continue-on-error: true
+    # Set the default Azure subscription so Terraform CLI can use it
+    - name: Set default Azure subscription
+      run: az account set --subscription ${{ fromJson(secrets.AZURE_CREDENTIALS).subscriptionId }}
 
-      - name: Terraform Init
-        if: steps.check_terraform.outputs.exists == 'true'
-        id: init
-        run: terraform init -backend=false
-        working-directory: ${{ env.WORKING_DIR }}
+    # Install the latest version of Terraform CLI and configure the Terraform CLI configuration file with a Terraform Cloud user API token
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v1
+      with:
+        cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
-      - name: Terraform Validate
-        if: steps.check_terraform.outputs.exists == 'true'
-        id: validate
-        run: terraform validate -no-color
-        working-directory: ${{ env.WORKING_DIR }}
+    # Initialize a new or existing Terraform working directory by creating initial files, loading any remote state, downloading modules, etc.
+    - name: Terraform Init
+      run: terraform init
 
-      - name: Comment PR with results
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const output = `#### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
-            #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
-            #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
+    # Checks that all Terraform configuration files adhere to a canonical format
+    - name: Terraform Format
+      run: terraform fmt -check
 
-            *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+    # Generates an execution plan for Terraform
+    - name: Terraform Plan
+      run: terraform plan -input=false
 
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: output
-            })
-
-  terraform-plan:
-    name: Terraform Plan
-    runs-on: ubuntu-latest
-    needs: terraform-lint
-    if: github.event_name == 'pull_request'
-    strategy:
-      matrix:
-        environment: [dev, staging, prod]
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Check if Terraform directory exists
-        id: check_terraform
-        run: |
-          if [ -d "${{ env.WORKING_DIR }}" ]; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-      - name: Setup Terraform
-        if: steps.check_terraform.outputs.exists == 'true'
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-
-      - name: Azure Login
-        if: steps.check_terraform.outputs.exists == 'true'
-        uses: azure/login@v1
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-        continue-on-error: true
-
-      - name: Terraform Init - ${{ matrix.environment }}
-        if: steps.check_terraform.outputs.exists == 'true'
-        run: |
-          terraform init \
-            -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
-            -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER }}" \
-            -backend-config="key=${{ matrix.environment }}.tfstate"
-        working-directory: ${{ env.WORKING_DIR }}
-
-      - name: Terraform Plan - ${{ matrix.environment }}
-        if: steps.check_terraform.outputs.exists == 'true'
-        run: |
-          terraform plan \
-            -var-file="environments/${{ matrix.environment }}.tfvars" \
-            -out=${{ matrix.environment }}.tfplan \
-            -no-color
-        working-directory: ${{ env.WORKING_DIR }}
-
-      - name: Upload Plan Artifact
-        if: steps.check_terraform.outputs.exists == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: tfplan-${{ matrix.environment }}
-          path: ${{ env.WORKING_DIR }}/${{ matrix.environment }}.tfplan
-          retention-days: 5
-
-  terraform-apply:
-    name: Terraform Apply
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    strategy:
-      matrix:
-        environment: [dev]  # Only auto-deploy to dev, staging/prod require manual approval
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Check if Terraform directory exists
-        id: check_terraform
-        run: |
-          if [ -d "${{ env.WORKING_DIR }}" ]; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-            echo "⚠️ Terraform directory not found. Skipping apply."
-            exit 0
-          fi
-
-      - name: Setup Terraform
-        if: steps.check_terraform.outputs.exists == 'true'
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-
-      - name: Azure Login
-        if: steps.check_terraform.outputs.exists == 'true'
-        uses: azure/login@v1
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-        continue-on-error: true
-
-      - name: Terraform Init - ${{ matrix.environment }}
-        if: steps.check_terraform.outputs.exists == 'true'
-        run: |
-          terraform init \
-            -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
-            -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER }}" \
-            -backend-config="key=${{ matrix.environment }}.tfstate"
-        working-directory: ${{ env.WORKING_DIR }}
-
-      - name: Terraform Apply - ${{ matrix.environment }}
-        if: steps.check_terraform.outputs.exists == 'true'
-        run: |
-          terraform apply \
-            -var-file="environments/${{ matrix.environment }}.tfvars" \
-            -auto-approve \
-            -no-color
-        working-directory: ${{ env.WORKING_DIR }}
-
-      - name: Output AKS Cluster Info
-        if: steps.check_terraform.outputs.exists == 'true'
-        run: terraform output -json
-        working-directory: ${{ env.WORKING_DIR }}
+      # On push to $default-branch, build or change infrastructure according to Terraform configuration files
+      # Note: It is recommended to set up a required "strict" status check in your repository for "Terraform Cloud". See the documentation on "strict" required status checks for more information: https://help.github.com/en/github/administering-a-repository/types-of-required-status-checks
+#    - name: Terraform Apply
+#      if: github.ref == 'refs/heads/$default-branch' && github.event_name == 'push'
+#      run: terraform apply -auto-approve -input=false      

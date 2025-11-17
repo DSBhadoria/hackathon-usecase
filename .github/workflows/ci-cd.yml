@@ -1,20 +1,7 @@
-name: Build and Push Microservices
+name: Build and Push Microservices Docker Images
 
 on:
-  push:
-    branches: trial-n-test
-  pull_request:
-    branches: main  
   workflow_dispatch:
-    inputs:
-      cloud_provider:
-        description: 'Cloud Provider'
-        required: true
-        type: choice
-        options:
-          - azure
-          - gcp
-        default: 'azure'
 
 env:
   AZURE_CONTAINER_REGISTRY: ${{ vars.AZURE_CONTAINER_REGISTRY }}
