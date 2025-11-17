@@ -1,26 +1,23 @@
-# Terraform configuration for Healthcare Application Infrastructure
-# This is a starter template - customize according to your needs
-
+# The configuration for the `remote` backend.
 terraform {
-  required_version = ">= 1.6.0"
-  
-  required_providers {
-    azurerm = {
-      source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+  backend "remote" {
+    # The name of your Terraform Cloud organization.
+    organization = "terraform-dbhadoria"
+
+    # The name of the Terraform Cloud workspace to store Terraform state files in.
+    workspaces {
+      name = "example-workspace"
     }
   }
-
-  # Backend configuration for remote state storage
-  # Uncomment and configure after creating storage account
-  # backend "azurerm" {
-  #   resource_group_name  = "terraform-state-rg"
-  #   storage_account_name = "tfstatehealthcare"
-  #   container_name       = "tfstate"
-  #   key                  = "dev.tfstate"
-  # }
 }
 
-provider "azurerm" {
-  features {}
+# Create a random name for the resource group using random_pet
+resource "random_pet" "rg_name" {
+  prefix = var.resource_group_name_prefix
+}
+
+# Create a resource group using the generated random name
+resource "azurerm_resource_group" "rg_azure" {
+  location = var.resource_group_location
+  name     = random_pet.rg_name.id
 }
