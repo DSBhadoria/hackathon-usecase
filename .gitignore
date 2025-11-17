@@ -1,0 +1,19 @@
+.DS*
+.class*
+.jar
+.ear
+
+# Node.js
+node_modules/
+package-lock.json
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+
+# Docker
+**/.dockerignore
+
+# VSCode
+.vscode/

@@ -1,27 +1,18 @@
-# Multi-stage build for Application Service (Appointment Service)
-FROM node:18-alpine AS base
+FROM node:20-alpine
 
-# Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+COPY ./package.json .
 
-# Install dependencies
-RUN npm install --omit=dev && npm cache clean --force
+RUN npm install
 
-# Copy source code
-COPY src ./src
+COPY . .
 
-# Expose port
 EXPOSE 3001
 
-# Set environment variables
 ENV NODE_ENV=production
 ENV PORT=3001
 
-# Run as non-root user
 USER node
 
-# Start the application
-CMD ["node", "src/index.js"]
+CMD ["npm", "start"]

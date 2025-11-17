@@ -1,26 +1,12 @@
-# Multi-stage build for Order Service (Java Spring Boot)
-FROM maven:3.9-eclipse-temurin-17-alpine AS build
-
-# Set working directory
-WORKDIR /app
-
-# Copy pom.xml and download dependencies
-COPY pom.xml .
-RUN mvn dependency:go-offline -B
-
-# Copy source code
-COPY src ./src
-
-# Build the application
-RUN mvn clean package -DskipTests -B
-
-# Production stage
-FROM eclipse-temurin:17-jre-alpine
+FROM maven:3.9-eclipse-temurin-17-alpine
 
 WORKDIR /app
 
-# Copy the jar file from build stage
-COPY --from=build /app/target/*.jar app.jar
+# Copy all source code and pom.xml
+COPY . .
+
+# Build Spring Boot JAR
+RUN mvn clean package -DskipTests
 
 # Expose port
 EXPOSE 8080
@@ -32,5 +18,5 @@ ENV JAVA_OPTS="-Xms256m -Xmx512m"
 RUN addgroup -S spring && adduser -S spring -G spring
 USER spring:spring
 
-# Start the application
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
+# Run the app directly
+CMD ["java", "-jar", "target/order-service-0.0.1-SNAPSHOT.jar"]
