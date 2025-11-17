@@ -3,6 +3,9 @@ name: Build and Push Microservices Docker Images
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 env:
   AZURE_CONTAINER_REGISTRY: ${{ vars.AZURE_CONTAINER_REGISTRY }}
 
