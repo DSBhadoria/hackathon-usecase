@@ -1,4 +1,4 @@
-name: 'Terraform-Efforts'
+name: 'Terraform Provisioning'
 
 on:
   workflow_dispatch:
