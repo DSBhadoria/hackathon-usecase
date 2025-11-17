@@ -1,20 +1,7 @@
 name: 'Terraform-Efforts'
 
 on:
-  push:
-    branches: trial-n-test
-  pull_request:
-    branches: main 
   workflow_dispatch:
-    inputs:
-      cloud_provider:
-        description: 'Cloud Provider'
-        required: true
-        type: choice
-        options:
-          - azure
-          - gcp
-        default: 'azure'
 
 permissions:
   contents: read
