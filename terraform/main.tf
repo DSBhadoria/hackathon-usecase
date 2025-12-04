@@ -57,10 +57,16 @@ resource "azurerm_kubernetes_cluster" "aks_cluster" {
   resource_group_name = azurerm_resource_group.rg_azure.name
   dns_prefix          = "aksckuster"
 
+  sku_tier = "Free"
+
   default_node_pool {
     name       = "default"
     node_count = 1
-    vm_size    = "Standard_D2_v2"
+    vm_size    = "Standard_DC1s_v3"
+  }
+
+  network_profile {
+    network_plugin = "kubenet"
   }
 
   identity {
